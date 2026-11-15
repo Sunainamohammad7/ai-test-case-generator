@@ -43,3 +43,4 @@ class TestCaseResponse(BaseModel):
     requirement: str
     test_cases: list[TestCase]
     assumptions: list[str]
+    source: str = "gemini"

@@ -24,6 +24,26 @@ Google Gemini.
 - Validates input and AI-generated output.
 - Includes automated API tests.
 
+
+### Semantic Caching
+
+The application uses Gemini Embeddings to convert
+software requirements into numerical vectors.
+
+When a user submits a requirement, the application:
+
+1. Checks for an exact match in SQLite.
+2. Generates an embedding if no exact match exists.
+3. Compares it with stored embeddings using cosine similarity.
+4. Returns cached test cases when similarity exceeds
+   the configured threshold.
+5. Otherwise, generates new test cases using Gemini
+   and stores the response and embedding.
+
+This reduces repeated LLM generation for semantically
+similar requirements.
+
+
 ## How to Run
 
 1. Create and activate a virtual environment.
