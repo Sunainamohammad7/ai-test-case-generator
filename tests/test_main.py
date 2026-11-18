@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import app.main as main_module
 
 from app.main import app
-from app.models import TestCaseResponse
+from app.models import TestCaseResponse as ResponseModel
 
 
 client = TestClient(app)
@@ -20,7 +20,7 @@ def test_home():
 def test_generate_test_cases(monkeypatch):
 
     def fake_generate(requirement):
-        return TestCaseResponse(
+        return ResponseModel(
             requirement=requirement,
             test_cases=[],
             assumptions=[]

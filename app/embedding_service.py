@@ -33,18 +33,46 @@ def generate_embedding(text: str) -> list[float]:
 
 def calculate_similarity(
     embedding1: list[float],
-    embedding2: list[float]
+    embedding2: list[float],
 ) -> float:
-    """Calculate cosine similarity between two embeddings."""
+    """Calculate cosine similarity safely."""
+
+    if not embedding1 or not embedding2:
+        raise ValueError("Embedding vectors cannot be empty.")
+
+    if len(embedding1) != len(embedding2):
+        raise ValueError(
+            "Embedding vectors must have equal dimensions."
+        )
+
+    if not all(
+        math.isfinite(value)
+        for value in embedding1 + embedding2
+    ):
+        raise ValueError(
+            "Embedding vectors contain invalid numbers."
+        )
 
     dot_product = sum(
-        a * b for a, b in zip(embedding1, embedding2)
+        a * b
+        for a, b in zip(embedding1, embedding2)
     )
 
-    magnitude1 = math.sqrt(sum(a * a for a in embedding1))
-    magnitude2 = math.sqrt(sum(b * b for b in embedding2))
+    magnitude1 = math.sqrt(
+        sum(value * value for value in embedding1)
+    )
+
+    magnitude2 = math.sqrt(
+        sum(value * value for value in embedding2)
+    )
 
     if magnitude1 == 0 or magnitude2 == 0:
-        return 0.0
+        raise ValueError(
+            "Embedding magnitude cannot be zero."
+        )
 
-    return dot_product / (magnitude1 * magnitude2)
+    similarity = dot_product / (
+        magnitude1 * magnitude2
+    )
+
+    return max(-1.0, min(1.0, similarity))

@@ -1,28 +1,29 @@
-
 import sqlite3
 import json
 
 from pathlib import Path
 from datetime import datetime, timezone
 
+from app.models import TestCaseResponse
 
-# Store database in the project root directory
-DATABASE_PATH = Path(__file__).resolve().parent.parent / "test_cases.db"
+
+DATABASE_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "test_cases.db"
+)
 
 
 def get_connection():
-    """Create a connection to the SQLite database."""
     return sqlite3.connect(DATABASE_PATH)
 
 
 def normalize_requirement(requirement: str) -> str:
-    """Normalize text for exact matching."""
-    return " ".join(requirement.strip().lower().split())
+    return " ".join(
+        requirement.strip().lower().split()
+    )
 
 
 def initialize_database():
-    """Create the database table if it doesn't exist."""
-
     connection = get_connection()
 
     try:
@@ -39,7 +40,6 @@ def initialize_database():
             )
         """)
 
-        # Add embedding column to existing databases if needed
         cursor.execute("PRAGMA table_info(test_cases)")
 
         columns = [
@@ -54,13 +54,19 @@ def initialize_database():
 
         connection.commit()
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS requirements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                normalized_requirement TEXT NOT NULL UNIQUE
+            )
+        """)
+
+
     finally:
         connection.close()
 
 
 def get_cached_response(requirement: str):
-    """Retrieve an exact cached response."""
-
     normalized = normalize_requirement(requirement)
 
     connection = get_connection()
@@ -76,10 +82,25 @@ def get_cached_response(requirement: str):
 
         result = cursor.fetchone()
 
-        if result:
-            return json.loads(result[0])
+        if result is None:
+            return None
 
-        return None
+        try:
+            cached_response = (
+                TestCaseResponse.model_validate_json(
+                    result[0]
+                )
+            )
+
+            return cached_response.model_dump(
+                mode="json"
+            )
+
+        except (ValueError, TypeError) as error:
+            print(
+                f"Invalid exact cache entry skipped: {error}"
+            )
+            return None
 
     finally:
         connection.close()
@@ -90,17 +111,13 @@ def save_cached_response(
     response,
     embedding=None
 ):
-    """Save generated test cases and their embedding."""
-
-    normalized = normalize_requirement(requirement)
-
-    if hasattr(response, "model_dump"):
-        response_data = response.model_dump(mode="json")
-    else:
-        response_data = response
+    # Validate before saving anything
+    validated_response = (
+        TestCaseResponse.model_validate(response)
+    )
 
     response_json = json.dumps(
-        response_data,
+        validated_response.model_dump(mode="json"),
         ensure_ascii=False
     )
 
@@ -110,7 +127,11 @@ def save_cached_response(
         else None
     )
 
-    created_at = datetime.now(timezone.utc).isoformat()
+    normalized = normalize_requirement(requirement)
+
+    created_at = datetime.now(
+        timezone.utc
+    ).isoformat()
 
     connection = get_connection()
 
@@ -126,7 +147,13 @@ def save_cached_response(
                 created_at
             )
             VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(normalized_requirement) DO NOTHING
+
+            ON CONFLICT(normalized_requirement)
+            DO UPDATE SET
+                requirement = excluded.requirement,
+                response_json = excluded.response_json,
+                embedding_json = excluded.embedding_json,
+                created_at = excluded.created_at
         """, (
             requirement,
             normalized,
@@ -142,15 +169,16 @@ def save_cached_response(
 
 
 def get_all_cached_embeddings():
-    """Retrieve all stored requirements and embeddings."""
-
     connection = get_connection()
 
     try:
         cursor = connection.cursor()
 
         cursor.execute("""
-            SELECT requirement, response_json, embedding_json
+            SELECT
+                requirement,
+                response_json,
+                embedding_json
             FROM test_cases
             WHERE embedding_json IS NOT NULL
         """)
@@ -165,8 +193,6 @@ def save_embedding(
     requirement: str,
     embedding: list[float]
 ):
-    """Save an embedding for an existing requirement."""
-
     normalized = normalize_requirement(requirement)
 
     connection = get_connection()
@@ -184,6 +210,52 @@ def save_embedding(
         ))
 
         connection.commit()
+
+    finally:
+        connection.close()
+
+
+def get_or_create_requirement_id(requirement: str) -> str:
+    """
+    Return a stable ID for a requirement.
+
+    The same normalized requirement always receives
+    the same ID.
+    """
+
+    normalized = normalize_requirement(requirement)
+
+    if not normalized:
+        raise ValueError("Requirement cannot be empty.")
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO requirements (
+                normalized_requirement
+            )
+            VALUES (?)
+        """, (normalized,))
+
+        cursor.execute("""
+            SELECT id
+            FROM requirements
+            WHERE normalized_requirement = ?
+        """, (normalized,))
+
+        row = cursor.fetchone()
+
+        if row is None:
+            raise RuntimeError(
+                "Unable to retrieve requirement ID."
+            )
+
+        connection.commit()
+
+        return f"REQ-{row[0]:03d}"
 
     finally:
         connection.close()

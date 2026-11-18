@@ -1,5 +1,25 @@
+# Python virtual environments
 venv/
 venv-*/
+.venv/
+
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+
+# Python cache
 __pycache__/
+*.pyc
 .pytest_cache/
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# IDE settings
+.vscode/
